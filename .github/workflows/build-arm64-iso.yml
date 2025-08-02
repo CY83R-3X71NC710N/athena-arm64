@@ -19,7 +19,7 @@ env:
 
 jobs:
   build-arm64-iso:
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     
     steps:
     - name: Checkout repository
