@@ -24,7 +24,14 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
-      
+
+    # Install Docker CLI via Homebrew
+    - name: Install Docker CLI
+      run: |
+        echo "🔧 Installing Docker CLI"
+        brew update
+        brew install docker
+
     - name: Verify Docker
       run: |
         echo "🔍 Verifying Docker installation"
