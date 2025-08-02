@@ -25,15 +25,25 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
       
-    - name: Set up Docker
+    - name: Set up Docker and Colima
       run: |
-        brew install docker
-        colima start --arch aarch64 --vm-type=vz --vz-rosetta
+        # Install Docker and Colima
+        brew install docker colima
         
-    - name: Verify ARM64 architecture
+        # Start Colima with ARM64 support
+        colima start --arch aarch64 --vm-type=vz --vz-rosetta --memory 8 --cpu 4
+        
+        # Wait for Docker to be ready
+        timeout 60 sh -c 'until docker info >/dev/null 2>&1; do sleep 1; done'
+        
+    - name: Verify ARM64 architecture and Docker
       run: |
         echo "Host architecture: $(uname -m)"
-        docker run --rm alpine:latest uname -m
+        echo "Docker version: $(docker --version)"
+        echo "Docker info:"
+        docker info
+        echo "Testing ARM64 container:"
+        docker run --rm --platform linux/arm64 alpine:latest uname -m
         
     - name: Set version variables
       id: version
@@ -73,7 +83,9 @@ jobs:
                 syslinux \
                 git \
                 wget \
-                curl && \
+                curl \
+                file \
+                coreutils && \
             dnf clean all
             
         # Set up working directory
@@ -93,7 +105,8 @@ jobs:
         VOLUME ["/output"]
         EOF
         
-        docker build -t athenaos-builder .
+        echo "Building Docker image for ARM64..."
+        docker build --platform linux/arm64 -t athenaos-builder .
         
     - name: Build ARM64 ISO
       run: |
@@ -104,21 +117,32 @@ jobs:
         #!/bin/bash
         set -e
         
-        echo "Starting AthenaOS ARM64 ISO build..."
-        echo "Fedora version: ${{ env.FEDORA_VERSION }}"
-        echo "Target architecture: aarch64"
+        echo "🚀 Starting AthenaOS ARM64 ISO build..."
+        echo "📋 Build Information:"
+        echo "   Fedora version: ${{ env.FEDORA_VERSION }}"
+        echo "   Target architecture: aarch64"
+        echo "   Container architecture: $(uname -m)"
+        echo "   ISO filename: ${{ steps.version.outputs.iso_filename }}"
+        echo ""
         
         # Create output directory
         mkdir -p /output
         
         # Verify kickstart file
+        echo "🔍 Validating kickstart file..."
         if ! pykickstart --version F${{ env.FEDORA_VERSION }} athena-iso.ks; then
-            echo "ERROR: Kickstart file validation failed"
+            echo "❌ ERROR: Kickstart file validation failed"
             exit 1
         fi
+        echo "✅ Kickstart file is valid"
+        
+        # Check available space
+        echo "📊 Available disk space:"
+        df -h /output
         
         # Build the ISO using livemedia-creator
-        echo "Building live media..."
+        echo ""
+        echo "🏗️  Building live media (this may take a while)..."
         livemedia-creator \
             --ks athena-iso.ks \
             --no-virt \
@@ -131,29 +155,42 @@ jobs:
             --releasever ${{ env.FEDORA_VERSION }} \
             --title "AthenaOS ARM64" \
             --logfile /output/build.log \
-            --timeout 7200
+            --timeout 7200 \
+            --tmp /tmp
             
         # Verify the ISO was created
+        echo ""
+        echo "🔍 Checking build results..."
         if [ -f "/output/${{ steps.version.outputs.iso_filename }}" ]; then
-            echo "ISO build successful!"
+            echo "✅ ISO build successful!"
+            echo "📁 Output directory contents:"
             ls -lh /output/
-            echo "ISO size: $(du -h /output/${{ steps.version.outputs.iso_filename }} | cut -f1)"
+            echo ""
+            echo "📊 ISO details:"
+            echo "   Size: $(du -h /output/${{ steps.version.outputs.iso_filename }} | cut -f1)"
+            echo "   File type: $(file /output/${{ steps.version.outputs.iso_filename }})"
         else
-            echo "ERROR: ISO build failed"
-            echo "Build log:"
-            cat /output/build.log || echo "No build log found"
+            echo "❌ ERROR: ISO build failed"
+            echo "📁 Output directory contents:"
+            ls -la /output/ || echo "No output directory"
+            echo ""
+            echo "📜 Build log (last 50 lines):"
+            tail -50 /output/build.log 2>/dev/null || echo "No build log found"
             exit 1
         fi
         EOF
         
         chmod +x build-iso.sh
         
-        # Run the build in container
+        # Run the build in container with better resource allocation
+        echo "🐳 Starting build container..."
         docker run --rm \
             --platform linux/arm64 \
             -v "$(pwd)":/workspace \
             -v "$(pwd)/output":/output \
             --privileged \
+            --memory=6g \
+            --cpus=3 \
             athenaos-builder \
             /workspace/build-iso.sh
             
@@ -179,6 +216,16 @@ jobs:
         cd output
         sha256sum "${{ steps.version.outputs.iso_filename }}" > "${{ steps.version.outputs.iso_filename }}.sha256"
         md5sum "${{ steps.version.outputs.iso_filename }}" > "${{ steps.version.outputs.iso_filename }}.md5"
+        echo "✅ Checksums generated:"
+        cat "${{ steps.version.outputs.iso_filename }}.sha256"
+        cat "${{ steps.version.outputs.iso_filename }}.md5"
+        
+    - name: Cleanup Docker resources
+      if: always()
+      run: |
+        echo "🧹 Cleaning up Docker resources..."
+        docker system prune -f || true
+        colima stop || true
         
     - name: Upload ISO artifact
       uses: actions/upload-artifact@v4
