@@ -25,25 +25,12 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
       
-    - name: Set up Docker and Colima
+    - name: Verify Docker
       run: |
-        # Install Docker and Colima
-        brew install docker colima
-        
-        # Try to start Colima with ARM64 support
-        echo "🚀 Starting Colima VM..."
-        
-        # First try with QEMU (more compatible)
-        if ! colima start --arch aarch64 --vm-type=qemu --memory 8 --cpu 4 --disk 60; then
-          echo "⚠️ QEMU failed, trying with default settings..."
-          # Fallback to default configuration
-          colima start --arch aarch64 --memory 6 --cpu 3 --disk 50
-        fi
-        
-        # Wait for Docker to be ready with extended timeout
-        echo "⏳ Waiting for Docker to be ready..."
-        timeout 180 sh -c 'until docker info >/dev/null 2>&1; do echo "Waiting for Docker..."; sleep 3; done'
-        echo "✅ Docker is ready!"
+        echo "🔍 Verifying Docker installation"
+        echo "Docker version: $(docker --version)"
+        echo "Docker info:"
+        docker info
         
     - name: Verify ARM64 architecture and Docker
       run: |
@@ -234,7 +221,6 @@ jobs:
       run: |
         echo "🧹 Cleaning up Docker resources..."
         docker system prune -f || true
-        colima stop || true
         
     - name: Upload ISO artifact
       uses: actions/upload-artifact@v4
