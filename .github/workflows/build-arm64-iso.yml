@@ -19,33 +19,31 @@ env:
 
 jobs:
   build-arm64-iso:
-    runs-on: macos-latest-xl
+    runs-on: ubuntu-latest
     
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    # Install Docker CLI via Homebrew
-    - name: Install Docker CLI
-      run: |
-        echo "🔧 Installing Docker CLI"
-        brew update
-        brew install docker
+    - name: Set up Docker Buildx and ARM64 emulation
+      uses: docker/setup-buildx-action@v3
+      with:
+        platforms: linux/amd64,linux/arm64
 
-    - name: Verify Docker
+    - name: Set up QEMU for ARM64 emulation
+      uses: docker/setup-qemu-action@v3
+      with:
+        platforms: arm64
+
+    - name: Verify Docker and ARM64 support
       run: |
-        echo "🔍 Verifying Docker installation"
-        echo "Docker version: $(docker --version)"
-        echo "Docker info:"
-        docker info
-        
-    - name: Verify ARM64 architecture and Docker
-      run: |
+        echo "🔍 Verifying Docker installation and ARM64 support"
         echo "Host architecture: $(uname -m)"
         echo "Docker version: $(docker --version)"
-        echo "Docker info:"
-        docker info
-        echo "Testing ARM64 container:"
+        echo "Docker buildx version: $(docker buildx version)"
+        echo "Available platforms:"
+        docker buildx ls
+        echo "Testing ARM64 emulation:"
         docker run --rm --platform linux/arm64 alpine:latest uname -m
         
     - name: Set version variables
@@ -185,15 +183,15 @@ jobs:
         
         chmod +x build-iso.sh
         
-        # Run the build in container with better resource allocation
+        # Run the build in container with optimized settings for Ubuntu
         echo "🐳 Starting build container..."
         docker run --rm \
             --platform linux/arm64 \
             -v "$(pwd)":/workspace \
             -v "$(pwd)/output":/output \
             --privileged \
-            --memory=6g \
-            --cpus=3 \
+            --memory=8g \
+            --cpus=4 \
             athenaos-builder \
             /workspace/build-iso.sh
             
@@ -217,9 +215,10 @@ jobs:
     - name: Generate checksums
       run: |
         cd output
+        echo "✅ Generating checksums..."
         sha256sum "${{ steps.version.outputs.iso_filename }}" > "${{ steps.version.outputs.iso_filename }}.sha256"
         md5sum "${{ steps.version.outputs.iso_filename }}" > "${{ steps.version.outputs.iso_filename }}.md5"
-        echo "✅ Checksums generated:"
+        echo "📋 Checksums generated:"
         cat "${{ steps.version.outputs.iso_filename }}.sha256"
         cat "${{ steps.version.outputs.iso_filename }}.md5"
         
