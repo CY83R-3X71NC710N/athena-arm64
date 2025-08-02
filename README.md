@@ -75,7 +75,7 @@ To test changes locally before pushing:
 
 - **Architecture**: ARM64 (aarch64)
 - **Base Distribution**: Fedora 40
-- **Package Manager**: Pacman (Arch-style)
+- **Package Manager**: DNF
 - **Desktop Environment**: XFCE4 (default)
 
 ## ⚠️ Important Notes

@@ -30,11 +30,20 @@ jobs:
         # Install Docker and Colima
         brew install docker colima
         
-        # Start Colima with ARM64 support
-        colima start --arch aarch64 --vm-type=vz --vz-rosetta --memory 8 --cpu 4
+        # Try to start Colima with ARM64 support
+        echo "🚀 Starting Colima VM..."
         
-        # Wait for Docker to be ready
-        timeout 60 sh -c 'until docker info >/dev/null 2>&1; do sleep 1; done'
+        # First try with QEMU (more compatible)
+        if ! colima start --arch aarch64 --vm-type=qemu --memory 8 --cpu 4 --disk 60; then
+          echo "⚠️ QEMU failed, trying with default settings..."
+          # Fallback to default configuration
+          colima start --arch aarch64 --memory 6 --cpu 3 --disk 50
+        fi
+        
+        # Wait for Docker to be ready with extended timeout
+        echo "⏳ Waiting for Docker to be ready..."
+        timeout 180 sh -c 'until docker info >/dev/null 2>&1; do echo "Waiting for Docker..."; sleep 3; done'
+        echo "✅ Docker is ready!"
         
     - name: Verify ARM64 architecture and Docker
       run: |
